@@ -17,15 +17,28 @@ dp = Dispatcher()
 
 
 class AccessMiddleware(BaseMiddleware):
-    async def __call__(self, handler, event: TelegramObject, data: dict):
-        if not config.ALLOWED_TG_IDS:
-            return await handler(event, data)
+    async def __call__(self, handler, event: Message, data: dict):
         user = data.get("event_from_user")
-        if user and user.id not in config.ALLOWED_TG_IDS:
-            msg = data.get("event_update", {})
-            if hasattr(event, "answer"):
-                await event.answer("Доступ ограничен.")
+        if user is None:
+            return await handler(event, data)
+
+        is_group = event.chat.type in ("group", "supergroup")
+        is_allowed = not config.ALLOWED_TG_IDS or user.id in config.ALLOWED_TG_IDS
+
+        if is_group and not is_allowed:
+            # Silently collect message, no response
+            if event.text:
+                await database.save_group_message(
+                    event.chat.id, event.chat.title,
+                    user.id, user.username, user.first_name,
+                    event.text,
+                )
             return
+
+        if not is_group and not is_allowed:
+            await event.answer("Доступ ограничен.")
+            return
+
         return await handler(event, data)
 
 dp.message.middleware(AccessMiddleware())

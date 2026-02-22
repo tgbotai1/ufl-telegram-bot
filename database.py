@@ -32,6 +32,18 @@ async def init_db():
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS group_messages (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT NOT NULL,
+                chat_title TEXT,
+                tg_id BIGINT NOT NULL,
+                username TEXT,
+                first_name TEXT,
+                content TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
 
 
 async def upsert_user(tg_id: int, username: str | None, first_name: str | None):
@@ -71,6 +83,15 @@ async def clear_history(tg_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM tg_messages WHERE tg_id = $1", tg_id)
+
+
+async def save_group_message(chat_id: int, chat_title: str | None, tg_id: int, username: str | None, first_name: str | None, content: str):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO group_messages (chat_id, chat_title, tg_id, username, first_name, content)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        """, chat_id, chat_title, tg_id, username, first_name, content)
 
 
 async def get_stats() -> dict:

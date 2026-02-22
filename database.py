@@ -85,6 +85,34 @@ async def clear_history(tg_id: int):
         await conn.execute("DELETE FROM tg_messages WHERE tg_id = $1", tg_id)
 
 
+async def search_group_messages(username: str | None = None, keyword: str | None = None, limit: int = 100) -> list[dict]:
+    pool = await get_pool()
+    conditions = []
+    params = []
+    i = 1
+    if username:
+        conditions.append(f"lower(username) = lower(${i})")
+        params.append(username.lstrip("@"))
+        i += 1
+    if keyword:
+        conditions.append(f"content ILIKE ${i}")
+        params.append(f"%{keyword}%")
+        i += 1
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            f"""
+            SELECT chat_title, username, first_name, content, created_at
+            FROM group_messages
+            {where}
+            ORDER BY created_at DESC
+            LIMIT {limit}
+            """,
+            *params,
+        )
+    return [dict(r) for r in reversed(rows)]
+
+
 async def save_group_message(chat_id: int, chat_title: str | None, tg_id: int, username: str | None, first_name: str | None, content: str):
     pool = await get_pool()
     async with pool.acquire() as conn:

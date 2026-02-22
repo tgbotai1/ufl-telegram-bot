@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.filters import CommandStart, Command
@@ -82,6 +83,36 @@ async def cmd_clear(msg: Message):
     await msg.answer("История диалога очищена.")
 
 
+@dp.message(Command("search"))
+async def cmd_search(msg: Message):
+    # Usage: /search @username [keyword]
+    parts = (msg.text or "").split(None, 2)  # ['/search', '@username', 'keyword?']
+    if len(parts) < 2:
+        await msg.answer("Использование: /search @username [ключевое слово]\nПример: /search @ivanov дедлайн")
+        return
+
+    raw = parts[1].lstrip("@")
+    keyword = parts[2] if len(parts) > 2 else None
+
+    rows = await database.search_group_messages(username=raw, keyword=keyword, limit=50)
+    if not rows:
+        kw_hint = f" по теме «{keyword}»" if keyword else ""
+        await msg.answer(f"Сообщений от @{raw}{kw_hint} не найдено.")
+        return
+
+    lines = []
+    for r in rows:
+        ts = r["created_at"].strftime("%d.%m %H:%M")
+        chat = r["chat_title"] or "?"
+        text = r["content"][:300] + ("…" if len(r["content"]) > 300 else "")
+        lines.append(f"[{ts}] [{chat}] {text}")
+
+    header = f"Найдено {len(rows)} сообщений от @{raw}"
+    if keyword:
+        header += f" (тема: {keyword})"
+    await msg.answer(header + ":\n\n" + "\n\n".join(lines))
+
+
 @dp.message(Command("stats"))
 async def cmd_stats(msg: Message):
     if msg.from_user.id not in config.ADMIN_TG_IDS:
@@ -107,6 +138,21 @@ async def handle_message(msg: Message):
     # Build context from history
     history = await database.get_history(msg.from_user.id, limit=config.HISTORY_CONTEXT_SIZE)
     messages = [{"role": r["role"], "content": r["content"]} for r in history]
+
+    # If message mentions @usernames — inject their group messages as context
+    mentions = list(dict.fromkeys(re.findall(r"@(\w+)", msg.text)))
+    if mentions:
+        context_parts = []
+        for username in mentions:
+            rows = await database.search_group_messages(username=username, limit=100)
+            if rows:
+                lines = [
+                    f"[{r['created_at'].strftime('%d.%m %H:%M')}] [{r['chat_title'] or '?'}] {r['content']}"
+                    for r in rows
+                ]
+                context_parts.append(f"Сообщения @{username} в группах:\n" + "\n".join(lines))
+        if context_parts:
+            messages = [{"role": "system", "content": "\n\n".join(context_parts)}] + messages
 
     # Show typing indicator
     await bot.send_chat_action(msg.chat.id, "typing")

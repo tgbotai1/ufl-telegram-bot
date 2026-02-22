@@ -10,5 +10,10 @@ ADMIN_TG_IDS = set(
     int(x.strip()) for x in os.environ.get("ADMIN_TG_IDS", "").split(",") if x.strip()
 )
 
+# Whitelist: only these users can use the bot. Empty = everyone allowed.
+ALLOWED_TG_IDS = set(
+    int(x.strip()) for x in os.environ.get("ALLOWED_TG_IDS", "").split(",") if x.strip()
+)
+
 # Number of previous messages to include in agent context
 HISTORY_CONTEXT_SIZE = int(os.environ.get("HISTORY_CONTEXT_SIZE", "10"))

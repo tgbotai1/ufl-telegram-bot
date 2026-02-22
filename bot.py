@@ -1,9 +1,9 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message
+from aiogram.types import Message, TelegramObject
 
 import config
 import database
@@ -14,6 +14,21 @@ log = logging.getLogger(__name__)
 
 bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
 dp = Dispatcher()
+
+
+class AccessMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event: TelegramObject, data: dict):
+        if not config.ALLOWED_TG_IDS:
+            return await handler(event, data)
+        user = data.get("event_from_user")
+        if user and user.id not in config.ALLOWED_TG_IDS:
+            msg = data.get("event_update", {})
+            if hasattr(event, "answer"):
+                await event.answer("Доступ ограничен.")
+            return
+        return await handler(event, data)
+
+dp.message.middleware(AccessMiddleware())
 
 
 @dp.message(CommandStart())
